@@ -2,10 +2,11 @@ package tech.noetzold.SensorDataProcessor.service;
 
 import jakarta.annotation.PostConstruct;
 import org.eclipse.paho.client.mqttv3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import tech.noetzold.SensorDataProcessor.model.SensorData;
 import tech.noetzold.SensorDataProcessor.repository.SensorDataRepository;
 
@@ -15,14 +16,21 @@ import java.util.List;
 @Service
 public class MqttService implements MqttCallback {
 
+    private static final Logger logger = LoggerFactory.getLogger(MqttService.class);
+
+    @Value("${mqtt.broker.url}")
+    private String brokerUrl;
+
     @Autowired
     private SensorDataRepository sensorDataRepository;
 
     @Autowired
     private DataService dataService;
 
+    @Autowired
+    private GeneralServerService generalServerService;
+
     private MqttClient client;
-    private final String GENERAL_SERVER_URL = "http://general-server:8081/api/data_receiver"; // URL do servidor geral
 
     @PostConstruct
     public void init() {
@@ -31,13 +39,19 @@ public class MqttService implements MqttCallback {
 
     private void connectToMqttBroker() {
         try {
-            client = new MqttClient("tcp://mosquitto:1883", MqttClient.generateClientId());
+            client = new MqttClient(brokerUrl, MqttClient.generateClientId());
             client.setCallback(this);
             client.connect();
-            client.subscribe("sensor/#");
-            System.out.println("Connected to MQTT broker and subscribed to topics.");
+            client.subscribe("zigbee2mqtt/temperature");
+            client.subscribe("zigbee2mqtt/humidity");
+            client.subscribe("zigbee2mqtt/motion");
+            client.subscribe("zigbee2mqtt/presence");
+            client.subscribe("zigbee2mqtt/co2");
+            client.subscribe("zigbee2mqtt/energy");
+            client.subscribe("zigbee2mqtt/water_flow");
+            logger.info("Connected to MQTT broker at {} and subscribed to topics.", brokerUrl);
         } catch (MqttException e) {
-            e.printStackTrace();
+            logger.error("Failed to connect and subscribe to MQTT broker at {}. Attempting to reconnect...", brokerUrl, e);
             reconnectToMqttBroker();
         }
     }
@@ -45,16 +59,22 @@ public class MqttService implements MqttCallback {
     private void reconnectToMqttBroker() {
         while (!client.isConnected()) {
             try {
-                System.out.println("Attempting to reconnect to MQTT broker...");
+                logger.info("Attempting to reconnect to MQTT broker...");
                 client.connect();
-                client.subscribe("sensor/#");
-                System.out.println("Reconnected to MQTT broker and subscribed to topics.");
+                client.subscribe("zigbee2mqtt/temperature");
+                client.subscribe("zigbee2mqtt/humidity");
+                client.subscribe("zigbee2mqtt/motion");
+                client.subscribe("zigbee2mqtt/presence");
+                client.subscribe("zigbee2mqtt/co2");
+                client.subscribe("zigbee2mqtt/energy");
+                client.subscribe("zigbee2mqtt/water_flow");
+                logger.info("Reconnected to MQTT broker and subscribed to topics.");
             } catch (MqttException e) {
-                e.printStackTrace();
+                logger.error("Failed to reconnect to MQTT broker. Retrying in 5 seconds...", e);
                 try {
                     Thread.sleep(5000); // Esperar 5 segundos antes de tentar reconectar
                 } catch (InterruptedException ex) {
-                    ex.printStackTrace();
+                    logger.error("Reconnection attempt interrupted", ex);
                 }
             }
         }
@@ -62,12 +82,14 @@ public class MqttService implements MqttCallback {
 
     @Override
     public void connectionLost(Throwable cause) {
-        System.out.println("Connection lost, attempting to reconnect...");
+        logger.warn("Connection lost to MQTT broker. Attempting to reconnect...", cause);
         reconnectToMqttBroker();
     }
 
     @Override
     public void messageArrived(String topic, MqttMessage message) throws Exception {
+        logger.debug("Message arrived on topic: {}, message: {}", topic, new String(message.getPayload()));
+
         String sensorType = topic.split("/")[1];
         double value = Double.parseDouble(new String(message.getPayload()));
         String coordinates = "0,0"; // Exemplo de coordenadas
@@ -79,7 +101,7 @@ public class MqttService implements MqttCallback {
 
         // Salvar dados brutos no banco de dados
         sensorDataRepository.save(sensorData);
-        System.out.println("Message arrived and saved: " + sensorType + " - " + value);
+        logger.info("Message arrived and saved: {} - {}", sensorType, value);
 
         // Aplicar tratamentos de dados (filtros, compressão, agregação, etc.)
         List<SensorData> filteredData = dataService.dataFilter(sensorData);
@@ -87,27 +109,15 @@ public class MqttService implements MqttCallback {
         List<SensorData> aggregatedData = dataService.dataAggregation(compressedData);
 
         // Enviar dados processados para o servidor geral
-        sendDataToGeneralServer(aggregatedData);
+        generalServerService.sendDataToGeneralServer(aggregatedData);
     }
 
     @Override
     public void deliveryComplete(IMqttDeliveryToken token) {
         try {
-            System.out.println("Delivery complete for message: " + token.getMessage());
+            logger.debug("Delivery complete for message: {}", token.getMessage());
         } catch (MqttException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendDataToGeneralServer(List<SensorData> data) {
-        RestTemplate restTemplate = new RestTemplate();
-        for (SensorData sensorData : data) {
-            ResponseEntity<String> response = restTemplate.postForEntity(GENERAL_SERVER_URL, sensorData, String.class);
-            if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("Data sent to general server: " + sensorData);
-            } else {
-                System.out.println("Failed to send data to general server: " + sensorData);
-            }
+            logger.error("Failed to get delivered message", e);
         }
     }
 }
