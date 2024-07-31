@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-import tech.noetzold.SensorDataProcessor.model.SensorData;
+import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
 
 import java.util.List;
 
@@ -18,9 +18,9 @@ public class GeneralServerService {
     @Value("${general.server.url}")
     private String generalServerUrl;
 
-    public void sendDataToGeneralServer(List<SensorData> data) {
+    public void sendDataToGeneralServer(List<SensorDataRaw> data) {
         RestTemplate restTemplate = new RestTemplate();
-        for (SensorData sensorData : data) {
+        for (SensorDataRaw sensorData : data) {
             ResponseEntity<String> response = restTemplate.postForEntity(generalServerUrl, sensorData, String.class);
             if (response.getStatusCode().is2xxSuccessful()) {
                 logger.info("Data sent to general server: {}", sensorData);
