@@ -2,8 +2,11 @@ package tech.noetzold.SensorDataProcessor.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import tech.noetzold.SensorDataProcessor.model.SensorData;
-import tech.noetzold.SensorDataProcessor.repository.SensorDataRepository;
+import tech.noetzold.SensorDataProcessor.model.SensorDataProcessed;
+import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
+import tech.noetzold.SensorDataProcessor.repository.SensorDataProcessedRepository;
+import tech.noetzold.SensorDataProcessor.repository.SensorDataRawRepository;
+
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -12,36 +15,41 @@ import java.util.stream.Collectors;
 public class DataService {
 
     @Autowired
-    private SensorDataRepository sensorDataRepository;
+    private SensorDataRawRepository sensorDataRawRepository;
 
-    public List<SensorData> dataFilter(SensorData sensorData) {
+    @Autowired
+    private SensorDataProcessedRepository sensorDataProcessedRepository;
+
+    public List<SensorDataRaw> dataFilter(SensorDataRaw sensorDataRaw) {
         // Implementar lógica de filtragem simples
-        List<SensorData> data = sensorDataRepository.findAll();
+        List<SensorDataRaw> data = sensorDataRawRepository.findAll();
         // Filtrar dados repetidos ou menos importantes
-        return data.stream().filter(d -> !d.equals(sensorData)).collect(Collectors.toList());
+        return data.stream().filter(d -> !d.equals(sensorDataRaw)).collect(Collectors.toList());
     }
 
-    public List<SensorData> dataCompression(List<SensorData> data) {
+    public List<SensorDataRaw> dataCompression(List<SensorDataRaw> data) {
         // Implementar lógica de compressão simples
         return data; // Exemplo: não faz nada
     }
 
-    public List<SensorData> dataAggregation(List<SensorData> data) {
+    public List<SensorDataRaw> dataAggregation(List<SensorDataRaw> data) {
         // Implementar lógica de agregação simples
         return data; // Exemplo: não faz nada
     }
 
-    public String dataValidation() {
-        // Implementar lógica de validação de dados simples
-        List<SensorData> data = sensorDataRepository.findAll();
-        // Validar dados
-        return "Data validated";
+    public void saveRawData(SensorDataRaw sensorDataRaw) {
+        sensorDataRawRepository.save(sensorDataRaw);
     }
 
-    public String dataSender() {
-        // Implementar lógica de envio de dados para o servidor geral
-        List<SensorData> data = sensorDataRepository.findAll();
-        // Enviar dados
-        return "Data sent";
+    public void saveProcessedData(List<SensorDataRaw> data) {
+        List<SensorDataProcessed> processedData = data.stream().map(d -> {
+            SensorDataProcessed processed = new SensorDataProcessed();
+            processed.setSensorType(d.getSensorType());
+            processed.setValue(d.getValue());
+            processed.setCoordinates(d.getCoordinates());
+            processed.setTimestamp(d.getTimestamp());
+            return processed;
+        }).collect(Collectors.toList());
+        sensorDataProcessedRepository.saveAll(processedData);
     }
 }
