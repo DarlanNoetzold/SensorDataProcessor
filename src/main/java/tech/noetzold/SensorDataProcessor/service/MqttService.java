@@ -7,8 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import tech.noetzold.SensorDataProcessor.model.SensorData;
-import tech.noetzold.SensorDataProcessor.repository.SensorDataRepository;
+import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
+import tech.noetzold.SensorDataProcessor.repository.SensorDataRawRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,7 +22,7 @@ public class MqttService implements MqttCallback {
     private String brokerUrl;
 
     @Autowired
-    private SensorDataRepository sensorDataRepository;
+    private SensorDataRawRepository sensorDataRawRepository;
 
     @Autowired
     private DataService dataService;
@@ -93,20 +93,23 @@ public class MqttService implements MqttCallback {
         String sensorType = topic.split("/")[1];
         double value = Double.parseDouble(new String(message.getPayload()));
         String coordinates = "0,0"; // Exemplo de coordenadas
-        SensorData sensorData = new SensorData();
-        sensorData.setSensorType(sensorType);
-        sensorData.setValue(value);
-        sensorData.setCoordinates(coordinates);
-        sensorData.setTimestamp(LocalDateTime.now());
+        SensorDataRaw sensorDataRaw = new SensorDataRaw();
+        sensorDataRaw.setSensorType(sensorType);
+        sensorDataRaw.setValue(value);
+        sensorDataRaw.setCoordinates(coordinates);
+        sensorDataRaw.setTimestamp(LocalDateTime.now());
 
         // Salvar dados brutos no banco de dados
-        sensorDataRepository.save(sensorData);
+        dataService.saveRawData(sensorDataRaw);
         logger.info("Message arrived and saved: {} - {}", sensorType, value);
 
         // Aplicar tratamentos de dados (filtros, compressão, agregação, etc.)
-        List<SensorData> filteredData = dataService.dataFilter(sensorData);
-        List<SensorData> compressedData = dataService.dataCompression(filteredData);
-        List<SensorData> aggregatedData = dataService.dataAggregation(compressedData);
+        List<SensorDataRaw> filteredData = dataService.dataFilter(sensorDataRaw);
+        List<SensorDataRaw> compressedData = dataService.dataCompression(filteredData);
+        List<SensorDataRaw> aggregatedData = dataService.dataAggregation(compressedData);
+
+        // Salvar dados processados no banco de dados
+        dataService.saveProcessedData(aggregatedData);
 
         // Enviar dados processados para o servidor geral
         generalServerService.sendDataToGeneralServer(aggregatedData);
