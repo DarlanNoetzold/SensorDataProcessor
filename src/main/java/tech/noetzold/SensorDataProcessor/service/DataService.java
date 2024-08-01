@@ -20,21 +20,56 @@ public class DataService {
     @Autowired
     private SensorDataProcessedRepository sensorDataProcessedRepository;
 
+    static {
+        System.loadLibrary("data_filter");
+        System.loadLibrary("data_compression");
+        System.loadLibrary("data_aggregation");
+    }
+
+    public native double[] filterData(double[] data);
+
+    public native double[] compressData(double[] data);
+
+    public native double[] aggregateData(double[] data);
+
     public List<SensorDataRaw> dataFilter(SensorDataRaw sensorDataRaw) {
-        // Implementar lógica de filtragem simples
         List<SensorDataRaw> data = sensorDataRawRepository.findAll();
-        // Filtrar dados repetidos ou menos importantes
-        return data.stream().filter(d -> !d.equals(sensorDataRaw)).collect(Collectors.toList());
+        double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
+        double[] filteredData = filterData(rawData);
+        return data.stream().filter(d -> {
+            for (double v : filteredData) {
+                if (d.getValue() == v) {
+                    return true;
+                }
+            }
+            return false;
+        }).collect(Collectors.toList());
     }
 
     public List<SensorDataRaw> dataCompression(List<SensorDataRaw> data) {
-        // Implementar lógica de compressão simples
-        return data; // Exemplo: não faz nada
+        double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
+        double[] compressedData = compressData(rawData);
+        return data.stream().filter(d -> {
+            for (double v : compressedData) {
+                if (d.getValue() == v) {
+                    return true;
+                }
+            }
+            return false;
+        }).collect(Collectors.toList());
     }
 
     public List<SensorDataRaw> dataAggregation(List<SensorDataRaw> data) {
-        // Implementar lógica de agregação simples
-        return data; // Exemplo: não faz nada
+        double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
+        double[] aggregatedData = aggregateData(rawData);
+        return data.stream().filter(d -> {
+            for (double v : aggregatedData) {
+                if (d.getValue() == v) {
+                    return true;
+                }
+            }
+            return false;
+        }).collect(Collectors.toList());
     }
 
     public void saveRawData(SensorDataRaw sensorDataRaw) {
