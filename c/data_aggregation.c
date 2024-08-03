@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "com_example_sensordataprocessor_service_DataService.h"
 
 JNIEXPORT jdoubleArray JNICALL Java_com_example_sensordataprocessor_service_DataService_aggregateData
@@ -10,7 +11,7 @@ JNIEXPORT jdoubleArray JNICALL Java_com_example_sensordataprocessor_service_Data
     int blockSize = 5; // Tamanho do bloco para agregação
     int newLength = (length + blockSize - 1) / blockSize; // Tamanho do array resultante
 
-    jdouble *aggregated = malloc(newLength * sizeof(jdouble));
+    jdouble *aggregated = (jdouble*)malloc(newLength * sizeof(jdouble));
     for (int i = 0; i < newLength; i++) {
         double sum = 0.0;
         int count = 0;
