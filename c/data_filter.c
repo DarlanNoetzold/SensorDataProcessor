@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "com_example_sensordataprocessor_service_DataService.h"
+#include "tech_noetzold_SensorDataProcessor_service_DataService.h"
 
-JNIEXPORT jdoubleArray JNICALL Java_com_example_sensordataprocessor_service_DataService_filterData
+JNIEXPORT jdoubleArray JNICALL Java_tech_noetzold_SensorDataProcessor_service_DataService_filterData
   (JNIEnv *env, jobject obj, jdoubleArray data) {
     jsize length = (*env)->GetArrayLength(env, data);
     jdouble *elements = (*env)->GetDoubleArrayElements(env, data, 0);
