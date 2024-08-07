@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import tech.noetzold.SensorDataProcessor.model.SensorDataProcessed;
 import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
@@ -24,6 +25,12 @@ public class DataService {
 
     @Autowired
     private SensorDataProcessedRepository sensorDataProcessedRepository;
+
+    @Autowired
+    private KafkaTemplate<String, Object> kafkaTemplate;
+
+    @Value("${spring.kafka.topic.processed-data}")
+    private String topicProcessedData;
 
     @Value("${use.native.heuristics:false}")
     private boolean useNativeHeuristics;
@@ -141,7 +148,7 @@ public class DataService {
     }
 
     public void saveProcessedData(List<SensorDataRaw> data) {
-        List<SensorDataProcessed> processedData = data.stream().map(d -> {
+        List<SensorDataProcessed> processedDataList = data.stream().map(d -> {
             SensorDataProcessed processed = new SensorDataProcessed();
             processed.setSensorType(d.getSensorType());
             processed.setValue(d.getValue());
@@ -149,6 +156,10 @@ public class DataService {
             processed.setTimestamp(d.getTimestamp());
             return processed;
         }).collect(Collectors.toList());
-        sensorDataProcessedRepository.saveAll(processedData);
+
+        sensorDataProcessedRepository.saveAll(processedDataList);
+
+        // Enviar dados processados para Kafka
+        processedDataList.forEach(processedData -> kafkaTemplate.send(topicProcessedData, processedData));
     }
 }
