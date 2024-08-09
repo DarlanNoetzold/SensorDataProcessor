@@ -112,7 +112,7 @@ public class MqttService implements MqttCallback {
         dataService.saveProcessedData(aggregatedData);
 
         // Enviar dados processados para o servidor geral
-        generalServerService.sendDataToGeneralServer(aggregatedData);
+        //generalServerService.sendDataToGeneralServer(aggregatedData);
     }
 
     @Override
