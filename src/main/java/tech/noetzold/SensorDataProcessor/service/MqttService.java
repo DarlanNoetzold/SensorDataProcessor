@@ -27,9 +27,6 @@ public class MqttService implements MqttCallback {
     @Autowired
     private DataService dataService;
 
-    @Autowired
-    private GeneralServerService generalServerService;
-
     private MqttClient client;
 
     @PostConstruct
