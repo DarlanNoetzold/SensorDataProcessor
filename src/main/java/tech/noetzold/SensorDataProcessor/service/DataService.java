@@ -37,9 +37,9 @@ public class DataService {
 
     static {
         try {
-            System.loadLibrary("libdata_filter");
-            System.loadLibrary("libdata_compression");
-            System.loadLibrary("libdata_aggregation");
+            System.loadLibrary("data_filter");
+            System.loadLibrary("data_compression");
+            System.loadLibrary("data_aggregation");
             logger.info("Libraries loaded successfully.");
         } catch (UnsatisfiedLinkError e) {
             logger.error("Failed to load libraries.", e);
