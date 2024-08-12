@@ -21,4 +21,6 @@ public class SensorDataProcessed {
     private String coordinates;
     private LocalDateTime timestamp;
 
+    private double filteredSize;
+    private double compressedSize;
 }
