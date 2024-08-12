@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 @Entity
 @Data
 public class SensorDataRaw {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -22,4 +21,8 @@ public class SensorDataRaw {
     private String coordinates;
     private LocalDateTime timestamp;
 
+    private double receivedSize;
+    private double variance;
+
 }
+
