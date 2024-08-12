@@ -5,15 +5,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import tech.noetzold.SensorDataProcessor.model.SensorDataProcessed;
 import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
-import tech.noetzold.SensorDataProcessor.repository.SensorDataProcessedRepository;
-import tech.noetzold.SensorDataProcessor.repository.SensorDataRawRepository;
+import tech.noetzold.SensorDataProcessor.model.Metrics;
+import tech.noetzold.SensorDataProcessor.repository.*;
 
-import java.util.List;
+import java.lang.management.ManagementFactory;
+import java.lang.management.OperatingSystemMXBean;
+import java.lang.management.ThreadMXBean;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
-import java.util.Arrays;
 
 @Service
 public class DataService {
@@ -27,6 +31,9 @@ public class DataService {
     private SensorDataProcessedRepository sensorDataProcessedRepository;
 
     @Autowired
+    private MetricsRepository metricsRepository;
+
+    @Autowired
     private KafkaTemplate<String, Object> kafkaTemplate;
 
     @Value("${spring.kafka.topic.processed-data}")
@@ -34,6 +41,11 @@ public class DataService {
 
     @Value("${use.native.heuristics:false}")
     private boolean useNativeHeuristics;
+
+    private AtomicLong errorCount = new AtomicLong(0);
+    private AtomicLong totalDataReceived = new AtomicLong(0);
+    private AtomicLong totalDataFiltered = new AtomicLong(0);
+    private AtomicLong totalDataCompressed = new AtomicLong(0);
 
     static {
         try {
@@ -46,14 +58,12 @@ public class DataService {
         }
     }
 
-    // Métodos nativos
     public native double[] filterData(double[] data);
 
     public native double[] compressData(double[] data);
 
     public native double[] aggregateData(double[] data);
 
-    // Métodos Java
     public double[] filterDataJava(double[] data) {
         return Arrays.stream(data).distinct().filter(d -> d > 0.1).toArray();
     }
@@ -78,28 +88,48 @@ public class DataService {
         return aggregated;
     }
 
-    // Métodos para decidir se usa nativo ou Java
     public double[] filterDataNativeOrJava(double[] data) {
-        if (useNativeHeuristics) {
-            return filterData(data);
-        } else {
-            return filterDataJava(data);
+        try {
+            if (useNativeHeuristics) {
+                return filterData(data);
+            } else {
+                return filterDataJava(data);
+            }
+        } catch (Exception e) {
+            logger.error("Error during filtering data", e);
+            errorCount.incrementAndGet();
+            saveMetrics();
+            return new double[0];
         }
     }
 
     public double[] compressDataNativeOrJava(double[] data) {
-        if (useNativeHeuristics) {
-            return compressData(data);
-        } else {
-            return compressDataJava(data);
+        try {
+            if (useNativeHeuristics) {
+                return compressData(data);
+            } else {
+                return compressDataJava(data);
+            }
+        } catch (Exception e) {
+            logger.error("Error during compressing data", e);
+            errorCount.incrementAndGet();
+            saveMetrics();
+            return new double[0];
         }
     }
 
     public double[] aggregateDataNativeOrJava(double[] data) {
-        if (useNativeHeuristics) {
-            return aggregateData(data);
-        } else {
-            return aggregateDataJava(data);
+        try {
+            if (useNativeHeuristics) {
+                return aggregateData(data);
+            } else {
+                return aggregateDataJava(data);
+            }
+        } catch (Exception e) {
+            logger.error("Error during aggregating data", e);
+            errorCount.incrementAndGet();
+            saveMetrics();
+            return new double[0];
         }
     }
 
@@ -107,6 +137,8 @@ public class DataService {
         List<SensorDataRaw> data = sensorDataRawRepository.findAll();
         double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
         double[] filteredData = filterDataNativeOrJava(rawData);
+        long filteredSize = (rawData.length - filteredData.length) * Double.BYTES;
+        totalDataFiltered.addAndGet(filteredSize);
         return data.stream().filter(d -> {
             for (double v : filteredData) {
                 if (d.getValue() == v) {
@@ -120,6 +152,8 @@ public class DataService {
     public List<SensorDataRaw> dataCompression(List<SensorDataRaw> data) {
         double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
         double[] compressedData = compressDataNativeOrJava(rawData);
+        long compressedSize = (rawData.length - compressedData.length) * Double.BYTES;
+        totalDataCompressed.addAndGet(compressedSize);
         return data.stream().filter(d -> {
             for (double v : compressedData) {
                 if (d.getValue() == v) {
@@ -145,6 +179,7 @@ public class DataService {
 
     public void saveRawData(SensorDataRaw sensorDataRaw) {
         sensorDataRawRepository.save(sensorDataRaw);
+        totalDataReceived.addAndGet(Double.BYTES);
     }
 
     public void saveProcessedData(List<SensorDataRaw> data) {
@@ -159,7 +194,40 @@ public class DataService {
 
         sensorDataProcessedRepository.saveAll(processedDataList);
 
-        // Enviar dados processados para Kafka
         processedDataList.forEach(processedData -> kafkaTemplate.send(topicProcessedData, processedData));
+    }
+
+    @Scheduled(fixedRate = 60000) // Atualiza a cada minuto
+    public void saveMetrics() {
+        OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+        ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+
+        double cpuLoad = osBean.getSystemLoadAverage();
+        long memoryUsage = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+        int threadCount = threadMXBean.getThreadCount();
+
+        Map<String, Double> varianceMap = new HashMap<>();
+        List<SensorDataRaw> rawDataList = sensorDataRawRepository.findAll();
+        Map<String, List<Double>> sensorDataMap = rawDataList.stream()
+                .collect(Collectors.groupingBy(SensorDataRaw::getSensorType,
+                        Collectors.mapping(SensorDataRaw::getValue, Collectors.toList())));
+
+        sensorDataMap.forEach((sensorType, values) -> {
+            double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+            double variance = values.stream().mapToDouble(v -> Math.pow(v - mean, 2)).average().orElse(0.0);
+            varianceMap.put(sensorType, variance);
+        });
+
+        Metrics metrics = new Metrics();
+        metrics.setCpuUsage(cpuLoad);
+        metrics.setMemoryUsage(memoryUsage);
+        metrics.setThreadCount(threadCount);
+        metrics.setVarianceMap(varianceMap);
+        metrics.setTotalDataReceived(totalDataReceived.get());
+        metrics.setTotalDataFiltered(totalDataFiltered.get());
+        metrics.setTotalDataCompressed(totalDataCompressed.get());
+        metrics.setErrorCount(errorCount.get());
+
+        metricsRepository.save(metrics);
     }
 }
