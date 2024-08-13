@@ -8,14 +8,24 @@ JNIEXPORT jdoubleArray JNICALL Java_tech_noetzold_SensorDataProcessor_service_Da
     jsize length = (*env)->GetArrayLength(env, data);
     jdouble *elements = (*env)->GetDoubleArrayElements(env, data, 0);
 
-    // Compressão simples: arredondar para duas casas decimais
+    // Lista temporária para armazenar os dados comprimidos
+    jdouble *compressed = (jdouble *) malloc(length * sizeof(jdouble));
+    int compressedIndex = 0;
+
+    // Compressão simples: eliminar valores consecutivos repetidos
     for (int i = 0; i < length; i++) {
-        elements[i] = round(elements[i] * 100.0) / 100.0;
+        if (i == 0 || elements[i] != elements[i - 1]) {
+            compressed[compressedIndex++] = elements[i];
+        }
     }
 
-    jdoubleArray result = (*env)->NewDoubleArray(env, length);
-    (*env)->SetDoubleArrayRegion(env, result, 0, length, elements);
+    // Criar um novo array com o tamanho do array comprimido
+    jdoubleArray result = (*env)->NewDoubleArray(env, compressedIndex);
+    (*env)->SetDoubleArrayRegion(env, result, 0, compressedIndex, compressed);
 
+    // Liberar memória
     (*env)->ReleaseDoubleArrayElements(env, data, elements, 0);
+    free(compressed);
+
     return result;
 }
