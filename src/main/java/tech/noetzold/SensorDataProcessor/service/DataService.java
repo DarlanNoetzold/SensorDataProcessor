@@ -197,7 +197,7 @@ public class DataService {
         processedDataList.forEach(processedData -> kafkaTemplate.send(topicProcessedData, processedData));
     }
 
-    @Scheduled(fixedRate = 60000) // Atualiza a cada minuto
+    @Scheduled(fixedRate = 10000)
     public void saveMetrics() {
         OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
