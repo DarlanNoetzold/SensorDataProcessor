@@ -47,6 +47,8 @@ public class DataService {
     private AtomicLong totalDataFiltered = new AtomicLong(0);
     private AtomicLong totalDataCompressed = new AtomicLong(0);
 
+    private final Map<String, List<Double>> sensorDataBuffer = new HashMap<>();
+
     static {
         try {
             System.loadLibrary("data_filter");
@@ -180,21 +182,38 @@ public class DataService {
     public void saveRawData(SensorDataRaw sensorDataRaw) {
         sensorDataRawRepository.save(sensorDataRaw);
         totalDataReceived.addAndGet(Double.BYTES);
-    }
 
-    public void saveProcessedData(List<SensorDataRaw> data) {
-        List<SensorDataProcessed> processedDataList = data.stream().map(d -> {
-            SensorDataProcessed processed = new SensorDataProcessed();
-            processed.setSensorType(d.getSensorType());
-            processed.setValue(d.getValue());
-            processed.setCoordinates(d.getCoordinates());
-            processed.setTimestamp(d.getTimestamp());
-            return processed;
-        }).collect(Collectors.toList());
+        // Adiciona o valor à lista de buffer correspondente ao tipo de sensor
+        sensorDataBuffer.computeIfAbsent(sensorDataRaw.getSensorType(), k -> new ArrayList<>()).add(sensorDataRaw.getValue());
 
-        sensorDataProcessedRepository.saveAll(processedDataList);
+        // Verifica se há 10 registros no buffer
+        if (sensorDataBuffer.get(sensorDataRaw.getSensorType()).size() >= 10) {
+            List<Double> bufferedData = sensorDataBuffer.get(sensorDataRaw.getSensorType());
 
-        processedDataList.forEach(processedData -> kafkaTemplate.send(topicProcessedData, processedData));
+            // Comprime os dados usando a média dos 10 valores
+            double[] compressedData = compressDataNativeOrJava(bufferedData.stream().mapToDouble(Double::doubleValue).toArray());
+
+            // Calcula o tamanho antes e depois da compressão
+            long originalSize = bufferedData.size() * Double.BYTES;
+            long compressedSize = compressedData.length * Double.BYTES;
+            totalDataCompressed.addAndGet(originalSize - compressedSize);
+
+            // Cria e salva o dado processado
+            for (double value : compressedData) {
+                SensorDataProcessed processed = new SensorDataProcessed();
+                processed.setSensorType(sensorDataRaw.getSensorType());
+                processed.setValue(value);
+                processed.setCoordinates(sensorDataRaw.getCoordinates());
+                processed.setTimestamp(sensorDataRaw.getTimestamp());
+                sensorDataProcessedRepository.save(processed);
+
+                // Enviar dado processado para Kafka
+                kafkaTemplate.send(topicProcessedData, processed);
+            }
+
+            // Limpa o buffer para o próximo lote
+            sensorDataBuffer.get(sensorDataRaw.getSensorType()).clear();
+        }
     }
 
     @Scheduled(fixedRate = 10000)
