@@ -26,5 +26,7 @@ public class Metrics {
     private long totalDataReceived;
     private long totalDataFiltered;
     private long totalDataCompressed;
+    private long totalDataAggregated;
+    private long totalDataAfterHeuristics;
     private long errorCount;
 }
