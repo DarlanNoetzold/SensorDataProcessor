@@ -47,8 +47,6 @@ public class DataService {
     private AtomicLong totalDataFiltered = new AtomicLong(0);
     private AtomicLong totalDataCompressed = new AtomicLong(0);
 
-    private final Map<String, List<Double>> sensorDataBuffer = new HashMap<>();
-
     static {
         try {
             System.loadLibrary("data_filter");
@@ -183,38 +181,25 @@ public class DataService {
         sensorDataRawRepository.save(sensorDataRaw);
         totalDataReceived.addAndGet(Double.BYTES);
 
-        // Adiciona o valor à lista de buffer correspondente ao tipo de sensor
-        sensorDataBuffer.computeIfAbsent(sensorDataRaw.getSensorType(), k -> new ArrayList<>()).add(sensorDataRaw.getValue());
+        double[] compressedData = compressDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
 
-        // Verifica se há 10 registros no buffer
-        if (sensorDataBuffer.get(sensorDataRaw.getSensorType()).size() >= 10) {
-            List<Double> bufferedData = sensorDataBuffer.get(sensorDataRaw.getSensorType());
+        long originalSize = Double.BYTES;
+        long compressedSize = compressedData.length * Double.BYTES;
 
-            double[] compressedData = compressDataNativeOrJava(bufferedData.stream().mapToDouble(Double::doubleValue).toArray());
+        logger.info("Original size: {} bytes, Compressed size: {} bytes", originalSize, compressedSize);
 
-            long originalSize = bufferedData.size() * Double.BYTES;
-            long compressedSize = Double.BYTES;
+        totalDataCompressed.addAndGet(originalSize - compressedSize);
 
-            logger.info("Original size: {} bytes, Compressed size: {} bytes", originalSize, compressedSize);
+        // Cria e salva o dado processado
+        SensorDataProcessed processed = new SensorDataProcessed();
+        processed.setSensorType(sensorDataRaw.getSensorType());
+        processed.setValue(compressedData[0]); // como estamos lidando com um único valor, pegamos o primeiro
+        processed.setCoordinates(sensorDataRaw.getCoordinates());
+        processed.setTimestamp(sensorDataRaw.getTimestamp());
+        sensorDataProcessedRepository.save(processed);
 
-            totalDataCompressed.addAndGet(originalSize - compressedSize);
-
-            // Cria e salva o dado processado
-            for (double value : compressedData) {
-                SensorDataProcessed processed = new SensorDataProcessed();
-                processed.setSensorType(sensorDataRaw.getSensorType());
-                processed.setValue(value);
-                processed.setCoordinates(sensorDataRaw.getCoordinates());
-                processed.setTimestamp(sensorDataRaw.getTimestamp());
-                sensorDataProcessedRepository.save(processed);
-
-                // Enviar dado processado para Kafka
-                kafkaTemplate.send(topicProcessedData, processed);
-            }
-
-            // Limpa o buffer para o próximo lote
-            sensorDataBuffer.get(sensorDataRaw.getSensorType()).clear();
-        }
+        // Enviar dado processado para Kafka
+        kafkaTemplate.send(topicProcessedData, processed);
     }
 
     public void saveProcessedData(List<SensorDataRaw> data) {
