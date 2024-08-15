@@ -183,7 +183,6 @@ public class DataService {
 
     public void saveRawData(SensorDataRaw sensorDataRaw) {
         sensorDataRawRepository.save(sensorDataRaw);
-        totalDataReceived.addAndGet(Double.BYTES);
 
         double[] filteredData = filterDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
         double[] compressedData = compressDataNativeOrJava(filteredData);
@@ -192,11 +191,14 @@ public class DataService {
         long originalSize = Double.BYTES;
         long compressedSize = compressedData.length * Double.BYTES;
         long aggregatedSize = aggregatedData.length * Double.BYTES;
+        long filteredSize = filteredData.length * Double.BYTES;
 
-        logger.info("Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes", originalSize, compressedSize, aggregatedSize);
+        logger.info("Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, compressedSize, aggregatedSize, filteredSize);
 
         totalDataCompressed.addAndGet(calculate(originalSize - compressedSize));
         totalDataAggregated.addAndGet(calculate(originalSize - aggregatedSize));
+        totalDataFiltered.addAndGet(calculate(originalSize - filteredSize));
+
 
         long finalDataSize = aggregatedSize;
         totalDataAfterHeuristics.addAndGet(finalDataSize);
@@ -249,6 +251,8 @@ public class DataService {
             varianceMap.put(sensorType, variance);
         });
 
+        totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + calculate(12));
+
         Metrics metrics = new Metrics();
         metrics.setCpuUsage(cpuLoad);
         metrics.setMemoryUsage(memoryUsage);
@@ -258,7 +262,7 @@ public class DataService {
         metrics.setTotalDataFiltered(totalDataFiltered.get());
         metrics.setTotalDataCompressed(totalDataCompressed.get());
         metrics.setTotalDataAggregated(totalDataAggregated.get());
-        metrics.setTotalDataAfterHeuristics(totalDataAfterHeuristics.get());
+        metrics.setTotalDataAfterHeuristics(totalDataReceived.get() - (totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get()));
         metrics.setErrorCount(errorCount.get());
 
         metricsRepository.save(metrics);
