@@ -266,6 +266,6 @@ public class DataService {
 
     private long calculate(long baseValue) {
         Random random = new Random();
-        return baseValue > 0 ? Math.max(1, (long) (baseValue * (0.1 + random.nextDouble() * 0.1))) : 0;
+        return baseValue > 0 ? Math.max(1, baseValue - random.nextInt((int) Math.min(baseValue, 10)) + 1) : 0;
     }
 }
