@@ -186,6 +186,12 @@ public class DataService {
         totalDataReceived.addAndGet(Double.BYTES);
 
         double[] filteredData = filterDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
+
+        if (filteredData.length == 0) {
+            logger.warn("Filtered data is empty for sensor: {}", sensorDataRaw.getSensorType());
+            return; // Ou qualquer outro tratamento adequado para o caso de dados filtrados vazios
+        }
+
         double[] compressedData = compressDataNativeOrJava(filteredData);
         double[] aggregatedData = aggregateDataNativeOrJava(compressedData);
 
