@@ -202,9 +202,9 @@ public class DataService {
 
         logger.info("Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, compressedSize, aggregatedSize, filteredSize);
 
-        totalDataCompressed.addAndGet(generateRandomValue(originalSize - compressedSize + 123));
-        totalDataAggregated.addAndGet(generateRandomValue(originalSize - aggregatedSize + 3155));
-        totalDataFiltered.addAndGet(generateRandomValue(originalSize - filteredSize + 221));
+        totalDataCompressed.addAndGet(generateRandomValue(originalSize - compressedSize + 1));
+        totalDataAggregated.addAndGet(generateRandomValue(originalSize - aggregatedSize + 3));
+        totalDataFiltered.addAndGet(generateRandomValue(originalSize - filteredSize + 4));
 
         logger.info("After generate -> Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, totalDataCompressed.get(), totalDataAggregated.get(), totalDataFiltered.get());
 
@@ -259,7 +259,7 @@ public class DataService {
             varianceMap.put(sensorType, variance);
         });
 
-        totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + generateRandomValue(123123));
+        totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + generateRandomValue(8));
 
         Metrics metrics = new Metrics();
         metrics.setCpuUsage(cpuLoad);
