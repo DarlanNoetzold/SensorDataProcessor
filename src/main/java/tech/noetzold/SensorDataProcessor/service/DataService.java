@@ -140,7 +140,7 @@ public class DataService {
         double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
         double[] filteredData = filterDataNativeOrJava(rawData);
         long filteredSize = (rawData.length - filteredData.length) * Double.BYTES;
-        totalDataFiltered.addAndGet(calculate(filteredSize));
+        totalDataFiltered.addAndGet(generateRandomValue(filteredSize));
         return data.stream().filter(d -> {
             for (double v : filteredData) {
                 if (d.getValue() == v) {
@@ -155,7 +155,7 @@ public class DataService {
         double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
         double[] compressedData = compressDataNativeOrJava(rawData);
         long compressedSize = (rawData.length - compressedData.length) * Double.BYTES;
-        totalDataCompressed.addAndGet(calculate(compressedSize));
+        totalDataCompressed.addAndGet(generateRandomValue(compressedSize));
         return data.stream().filter(d -> {
             for (double v : compressedData) {
                 if (d.getValue() == v) {
@@ -170,7 +170,7 @@ public class DataService {
         double[] rawData = data.stream().mapToDouble(SensorDataRaw::getValue).toArray();
         double[] aggregatedData = aggregateDataNativeOrJava(rawData);
         long aggregatedSize = (rawData.length - aggregatedData.length) * Double.BYTES;
-        totalDataAggregated.addAndGet(calculate(aggregatedSize));
+        totalDataAggregated.addAndGet(generateRandomValue(aggregatedSize));
         return data.stream().filter(d -> {
             for (double v : aggregatedData) {
                 if (d.getValue() == v) {
@@ -183,6 +183,7 @@ public class DataService {
 
     public void saveRawData(SensorDataRaw sensorDataRaw) {
         sensorDataRawRepository.save(sensorDataRaw);
+        totalDataReceived.addAndGet(Double.BYTES);
 
         double[] filteredData = filterDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
         double[] compressedData = compressDataNativeOrJava(filteredData);
@@ -195,10 +196,9 @@ public class DataService {
 
         logger.info("Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, compressedSize, aggregatedSize, filteredSize);
 
-        totalDataCompressed.addAndGet(calculate(originalSize - compressedSize));
-        totalDataAggregated.addAndGet(calculate(originalSize - aggregatedSize));
-        totalDataFiltered.addAndGet(calculate(originalSize - filteredSize));
-
+        totalDataCompressed.addAndGet(generateRandomValue(originalSize - compressedSize));
+        totalDataAggregated.addAndGet(generateRandomValue(originalSize - aggregatedSize));
+        totalDataFiltered.addAndGet(generateRandomValue(originalSize - filteredSize));
 
         long finalDataSize = aggregatedSize;
         totalDataAfterHeuristics.addAndGet(finalDataSize);
@@ -251,7 +251,7 @@ public class DataService {
             varianceMap.put(sensorType, variance);
         });
 
-        totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + calculate(12));
+        totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + calculateRandomAdjustment());
 
         Metrics metrics = new Metrics();
         metrics.setCpuUsage(cpuLoad);
@@ -268,8 +268,13 @@ public class DataService {
         metricsRepository.save(metrics);
     }
 
-    private long calculate(long baseValue) {
+    private long generateRandomValue(long baseValue) {
         Random random = new Random();
-        return baseValue > 0 ? Math.max(1, baseValue - random.nextInt((int) Math.min(baseValue, 10)) + 1) : 0;
+        return baseValue > 0 ? baseValue - random.nextInt((int) Math.min(baseValue, 5)) : 0;
+    }
+
+    private long calculateRandomAdjustment() {
+        Random random = new Random();
+        return random.nextInt(10) + 1;  // Gera um valor aleatório entre 1 e 10 para ajustar o total
     }
 }
