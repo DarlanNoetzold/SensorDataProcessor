@@ -8,10 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import tech.noetzold.SensorDataProcessor.model.SensorDataRaw;
-import tech.noetzold.SensorDataProcessor.repository.SensorDataRawRepository;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 public class MqttService implements MqttCallback {
@@ -20,9 +18,6 @@ public class MqttService implements MqttCallback {
 
     @Value("${mqtt.broker.url}")
     private String brokerUrl;
-
-    @Autowired
-    private SensorDataRawRepository sensorDataRawRepository;
 
     @Autowired
     private DataService dataService;
@@ -39,13 +34,9 @@ public class MqttService implements MqttCallback {
             client = new MqttClient(brokerUrl, MqttClient.generateClientId());
             client.setCallback(this);
             client.connect();
-            client.subscribe("zigbee2mqtt/temperature");
-            client.subscribe("zigbee2mqtt/humidity");
-            client.subscribe("zigbee2mqtt/motion");
-            client.subscribe("zigbee2mqtt/presence");
-            client.subscribe("zigbee2mqtt/co2");
-            client.subscribe("zigbee2mqtt/energy");
-            client.subscribe("zigbee2mqtt/water_flow");
+            String[] topics = {"zigbee2mqtt/temperature", "zigbee2mqtt/humidity", "zigbee2mqtt/motion",
+                    "zigbee2mqtt/presence", "zigbee2mqtt/co2", "zigbee2mqtt/energy", "zigbee2mqtt/water_flow"};
+            client.subscribe(topics);
             logger.info("Connected to MQTT broker at {} and subscribed to topics.", brokerUrl);
         } catch (MqttException e) {
             logger.error("Failed to connect and subscribe to MQTT broker at {}. Attempting to reconnect...", brokerUrl, e);
@@ -58,13 +49,9 @@ public class MqttService implements MqttCallback {
             try {
                 logger.info("Attempting to reconnect to MQTT broker...");
                 client.connect();
-                client.subscribe("zigbee2mqtt/temperature");
-                client.subscribe("zigbee2mqtt/humidity");
-                client.subscribe("zigbee2mqtt/motion");
-                client.subscribe("zigbee2mqtt/presence");
-                client.subscribe("zigbee2mqtt/co2");
-                client.subscribe("zigbee2mqtt/energy");
-                client.subscribe("zigbee2mqtt/water_flow");
+                String[] topics = {"zigbee2mqtt/temperature", "zigbee2mqtt/humidity", "zigbee2mqtt/motion",
+                        "zigbee2mqtt/presence", "zigbee2mqtt/co2", "zigbee2mqtt/energy", "zigbee2mqtt/water_flow"};
+                client.subscribe(topics);
                 logger.info("Reconnected to MQTT broker and subscribed to topics.");
             } catch (MqttException e) {
                 logger.error("Failed to reconnect to MQTT broker. Retrying in 5 seconds...", e);
@@ -96,20 +83,8 @@ public class MqttService implements MqttCallback {
         sensorDataRaw.setCoordinates(coordinates);
         sensorDataRaw.setTimestamp(LocalDateTime.now());
 
-        // Salvar dados brutos no banco de dados
+        // Processar e salvar os dados recebidos
         dataService.saveRawData(sensorDataRaw);
-        logger.info("Message arrived and saved: {} - {}", sensorType, value);
-
-        // Aplicar tratamentos de dados (filtros, compressão, agregação, etc.)
-        List<SensorDataRaw> filteredData = dataService.dataFilter(sensorDataRaw);
-        List<SensorDataRaw> compressedData = dataService.dataCompression(filteredData);
-        List<SensorDataRaw> aggregatedData = dataService.dataAggregation(compressedData);
-
-        // Salvar dados processados no banco de dados
-        dataService.saveProcessedData(aggregatedData);
-
-        // Enviar dados processados para o servidor geral
-        //generalServerService.sendDataToGeneralServer(aggregatedData);
     }
 
     @Override
