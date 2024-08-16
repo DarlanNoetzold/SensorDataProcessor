@@ -189,7 +189,7 @@ public class DataService {
 
         if (filteredData.length == 0) {
             logger.warn("Filtered data is empty for sensor: {}", sensorDataRaw.getSensorType());
-            return; // Ou qualquer outro tratamento adequado para o caso de dados filtrados vazios
+            return;
         }
 
         double[] compressedData = compressDataNativeOrJava(filteredData);
