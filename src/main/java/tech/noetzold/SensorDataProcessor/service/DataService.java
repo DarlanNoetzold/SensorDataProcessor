@@ -182,60 +182,75 @@ public class DataService {
     }
 
     public void saveRawData(SensorDataRaw sensorDataRaw) {
-        sensorDataRawRepository.save(sensorDataRaw);
-        totalDataReceived.addAndGet(Double.BYTES);
+        saveRawDataToRepository(sensorDataRaw);
 
-        double[] filteredData = filterDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
-
+        double[] filteredData = applyFiltering(sensorDataRaw);
         if (filteredData.length == 0) {
-            logger.warn("Filtered data is empty for sensor: {}", sensorDataRaw.getSensorType());
             return;
         }
 
-        double[] compressedData = compressDataNativeOrJava(filteredData);
-        double[] aggregatedData = aggregateDataNativeOrJava(compressedData);
+        double[] compressedData = applyCompression(filteredData);
+        double[] aggregatedData = applyAggregation(compressedData);
 
         long originalSize = Double.BYTES;
         long compressedSize = compressedData.length * Double.BYTES;
         long aggregatedSize = aggregatedData.length * Double.BYTES;
         long filteredSize = filteredData.length * Double.BYTES;
 
-        logger.info("Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, compressedSize, aggregatedSize, filteredSize);
+        updateMetrics(originalSize, compressedSize, aggregatedSize, filteredSize);
 
+        saveProcessedData(sensorDataRaw, aggregatedData);
+        sendToKafka(sensorDataRaw, aggregatedData);
+    }
+
+    private void saveRawDataToRepository(SensorDataRaw sensorDataRaw) {
+        sensorDataRawRepository.save(sensorDataRaw);
+        totalDataReceived.addAndGet(Double.BYTES);
+    }
+
+    private double[] applyFiltering(SensorDataRaw sensorDataRaw) {
+        double[] filteredData = filterDataNativeOrJava(new double[]{sensorDataRaw.getValue()});
+        if (filteredData.length == 0) {
+            logger.warn("Filtered data is empty for sensor: {}", sensorDataRaw.getSensorType());
+        }
+        return filteredData;
+    }
+
+    private double[] applyCompression(double[] filteredData) {
+        return compressDataNativeOrJava(filteredData);
+    }
+
+    private double[] applyAggregation(double[] compressedData) {
+        return aggregateDataNativeOrJava(compressedData);
+    }
+
+    private void updateMetrics(long originalSize, long compressedSize, long aggregatedSize, long filteredSize) {
         totalDataCompressed.addAndGet(generateRandomValue(originalSize - compressedSize + 1));
         totalDataAggregated.addAndGet(generateRandomValue(originalSize - aggregatedSize + 3));
         totalDataFiltered.addAndGet(generateRandomValue(originalSize - filteredSize + 4));
 
-        logger.info("After generate -> Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, totalDataCompressed.get(), totalDataAggregated.get(), totalDataFiltered.get());
-
         long finalDataSize = aggregatedSize;
         totalDataAfterHeuristics.addAndGet(finalDataSize);
 
-        // Cria e salva o dado processado
+        logger.info("Updated metrics -> Original size: {} bytes, Compressed size: {} bytes, Aggregated size: {} bytes, Filtered Size: {} bytes", originalSize, totalDataCompressed.get(), totalDataAggregated.get(), totalDataFiltered.get());
+    }
+
+    private void saveProcessedData(SensorDataRaw sensorDataRaw, double[] aggregatedData) {
         SensorDataProcessed processed = new SensorDataProcessed();
         processed.setSensorType(sensorDataRaw.getSensorType());
-        processed.setValue(aggregatedData[0]); // como estamos lidando com um único valor, pegamos o primeiro
+        processed.setValue(aggregatedData[0]);
         processed.setCoordinates(sensorDataRaw.getCoordinates());
         processed.setTimestamp(sensorDataRaw.getTimestamp());
         sensorDataProcessedRepository.save(processed);
-
-        // Enviar dado processado para Kafka
-        kafkaTemplate.send(topicProcessedData, processed);
     }
 
-    public void saveProcessedData(List<SensorDataRaw> data) {
-        List<SensorDataProcessed> processedDataList = data.stream().map(d -> {
-            SensorDataProcessed processed = new SensorDataProcessed();
-            processed.setSensorType(d.getSensorType());
-            processed.setValue(d.getValue());
-            processed.setCoordinates(d.getCoordinates());
-            processed.setTimestamp(d.getTimestamp());
-            return processed;
-        }).collect(Collectors.toList());
-
-        sensorDataProcessedRepository.saveAll(processedDataList);
-
-        processedDataList.forEach(processedData -> kafkaTemplate.send(topicProcessedData, processedData));
+    private void sendToKafka(SensorDataRaw sensorDataRaw, double[] aggregatedData) {
+        SensorDataProcessed processed = new SensorDataProcessed();
+        processed.setSensorType(sensorDataRaw.getSensorType());
+        processed.setValue(aggregatedData[0]);
+        processed.setCoordinates(sensorDataRaw.getCoordinates());
+        processed.setTimestamp(sensorDataRaw.getTimestamp());
+        kafkaTemplate.send(topicProcessedData, processed);
     }
 
     @Scheduled(fixedRate = 10000)
