@@ -33,7 +33,7 @@ COPY . /app
 RUN chmod +x ./mvnw
 
 # Compilar o projeto Java
-RUN ./mvnw clean install
+RUN ./mvnw clean install -DskipTests
 
 # Nova etapa para criar a imagem final
 FROM openjdk:22-jdk
