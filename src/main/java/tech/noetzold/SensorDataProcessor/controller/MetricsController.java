@@ -18,11 +18,21 @@ public class MetricsController {
 
     @GetMapping
     public List<Metrics> getAllMetrics() {
-        return metricsRepository.findAll();
+        List<Metrics> metricsList = metricsRepository.findAll();
+
+        metricsRepository.deleteAll();
+
+        return metricsList;
     }
 
     @GetMapping("/latest")
     public Metrics getLatestMetrics() {
-        return metricsRepository.findTopByOrderByIdDesc();
+        Metrics latestMetrics = metricsRepository.findTopByOrderByIdDesc();
+
+        if (latestMetrics != null) {
+            metricsRepository.delete(latestMetrics);
+        }
+
+        return latestMetrics;
     }
 }
