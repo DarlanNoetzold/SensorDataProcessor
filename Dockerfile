@@ -1,14 +1,11 @@
-# Usar uma imagem baseada no Debian com OpenJDK 22 para compilar e executar a aplicação Java
+# Usar uma imagem baseada no Debian para compilar os arquivos C
 FROM debian:bullseye-slim AS builder
 
-# Instalar o OpenJDK 22 e o GCC para compilar os arquivos C
-RUN apt-get update && apt-get install -y openjdk-22-jdk build-essential
+# Instalar GCC para compilar os arquivos C
+RUN apt-get update && apt-get install -y build-essential
 
 # Definir o diretório de trabalho para o código-fonte
 WORKDIR /app
-
-# Configurar a variável de ambiente JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-22-openjdk-amd64
 
 # Copiar o código-fonte do C para o contêiner
 COPY c/*.c /app/c/
@@ -16,12 +13,20 @@ COPY c/*.h /app/c/
 
 # Compilar os arquivos C para criar as bibliotecas compartilhadas
 RUN mkdir -p /app/libs \
-    && gcc -shared -o /app/libs/libdata_filter.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_filter.c \
-    && gcc -shared -o /app/libs/libdata_compression.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_compression.c \
-    && gcc -shared -o /app/libs/libdata_aggregation.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_aggregation.c
+    && gcc -shared -o /app/libs/libdata_filter.so -fPIC /app/c/data_filter.c \
+    && gcc -shared -o /app/libs/libdata_compression.so -fPIC /app/c/data_compression.c \
+    && gcc -shared -o /app/libs/libdata_aggregation.so -fPIC /app/c/data_aggregation.c
 
-# Compilar a aplicação Java
+# Compilar a aplicação Java usando a imagem openjdk:22-jdk com Maven
+FROM openjdk:22-jdk AS maven_build
+
+# Definir o diretório de trabalho
+WORKDIR /app
+
+# Copiar o código fonte para o contêiner
 COPY . /app
+
+# Compilar o projeto Java
 RUN ./mvnw clean install
 
 # Nova etapa para criar a imagem final
@@ -31,7 +36,7 @@ FROM openjdk:22-jdk
 COPY --from=builder /app/libs /app/libs
 
 # Copiar o arquivo JAR da aplicação para o contêiner
-COPY --from=builder /app/target/SensorDataProcessor-0.0.1-SNAPSHOT.jar /app/SensorDataProcessor-0.0.1-SNAPSHOT.jar
+COPY --from=maven_build /app/target/SensorDataProcessor-0.0.1-SNAPSHOT.jar /app/SensorDataProcessor-0.0.1-SNAPSHOT.jar
 
 # Configurar o caminho da biblioteca compartilhada
 ENV LD_LIBRARY_PATH="/app/libs"
