@@ -1,11 +1,14 @@
 # Usar uma imagem baseada no Debian para compilar os arquivos C
 FROM debian:bullseye-slim AS builder
 
-# Instalar GCC para compilar os arquivos C
-RUN apt-get update && apt-get install -y build-essential
+# Instalar o OpenJDK e o GCC para compilar os arquivos C
+RUN apt-get update && apt-get install -y openjdk-17-jdk build-essential
 
 # Definir o diretório de trabalho para o código-fonte
 WORKDIR /app
+
+# Configurar a variável de ambiente JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 # Copiar o código-fonte do C para o contêiner
 COPY c/*.c /app/c/
@@ -13,9 +16,9 @@ COPY c/*.h /app/c/
 
 # Compilar os arquivos C para criar as bibliotecas compartilhadas
 RUN mkdir -p /app/libs \
-    && gcc -shared -o /app/libs/libdata_filter.so -fPIC /app/c/data_filter.c \
-    && gcc -shared -o /app/libs/libdata_compression.so -fPIC /app/c/data_compression.c \
-    && gcc -shared -o /app/libs/libdata_aggregation.so -fPIC /app/c/data_aggregation.c
+    && gcc -shared -o /app/libs/libdata_filter.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_filter.c \
+    && gcc -shared -o /app/libs/libdata_compression.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_compression.c \
+    && gcc -shared -o /app/libs/libdata_aggregation.so -fPIC -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" /app/c/data_aggregation.c
 
 # Compilar a aplicação Java usando a imagem openjdk:22-jdk com Maven
 FROM openjdk:22-jdk AS maven_build
