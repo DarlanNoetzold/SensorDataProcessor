@@ -1,3 +1,9 @@
+# Etapa de construção do JAR
+FROM maven:3.8.5-openjdk-17 AS build
+WORKDIR /app
+COPY . /app
+RUN mvn clean install
+
 # Usar uma imagem baseada no Debian com OpenJDK para compilar e executar a aplicação Java
 FROM debian:bullseye-slim AS builder
 
@@ -26,8 +32,8 @@ FROM openjdk:22-jdk
 # Copiar as bibliotecas compiladas para a nova imagem
 COPY --from=builder /app/libs /app/libs
 
-# Copiar o arquivo JAR da aplicação para o contêiner
-COPY target/SensorDataProcessor-0.0.1-SNAPSHOT.jar /app/SensorDataProcessor-0.0.1-SNAPSHOT.jar
+# Copiar o arquivo JAR da aplicação para o contêiner gerado na etapa de build
+COPY --from=build /app/target/SensorDataProcessor-0.0.1-SNAPSHOT.jar /app/SensorDataProcessor-0.0.1-SNAPSHOT.jar
 
 # Configurar o caminho da biblioteca compartilhada
 ENV LD_LIBRARY_PATH="/app/libs"
@@ -36,4 +42,3 @@ ENV LD_LIBRARY_PATH="/app/libs"
 EXPOSE 8082
 
 ENTRYPOINT ["java", "-Djava.library.path=/app/libs", "-jar", "/app/SensorDataProcessor-0.0.1-SNAPSHOT.jar"]
-
