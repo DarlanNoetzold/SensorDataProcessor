@@ -17,7 +17,7 @@ public class Metrics {
     private long memoryUsage;
     private int threadCount;
 
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "sensor_variance", joinColumns = @JoinColumn(name = "metrics_id"))
     @MapKeyColumn(name = "sensor_type")
     @Column(name = "variance")
