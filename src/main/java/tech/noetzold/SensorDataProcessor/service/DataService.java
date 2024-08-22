@@ -15,6 +15,7 @@ import tech.noetzold.SensorDataProcessor.repository.*;
 import java.lang.management.ManagementFactory;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.ThreadMXBean;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -38,6 +39,12 @@ public class DataService {
 
     @Value("${spring.kafka.topic.processed-data}")
     private String topicProcessedData;
+
+    @Value("${spring.kafka.topic.metrics}")
+    private String topicMetrics;
+
+    @Value("${sensor.processor.id}")
+    private String sensorProcessorId;
 
     @Value("${use.native.heuristics:false}")
     private boolean useNativeHeuristics;
@@ -241,6 +248,7 @@ public class DataService {
         processed.setValue(aggregatedData[0]);
         processed.setCoordinates(sensorDataRaw.getCoordinates());
         processed.setTimestamp(sensorDataRaw.getTimestamp());
+        processed.setProcessorId(sensorProcessorId);
         sensorDataProcessedRepository.save(processed);
     }
 
@@ -250,6 +258,7 @@ public class DataService {
         processed.setValue(aggregatedData[0]);
         processed.setCoordinates(sensorDataRaw.getCoordinates());
         processed.setTimestamp(sensorDataRaw.getTimestamp());
+        processed.setProcessorId(sensorProcessorId);
         kafkaTemplate.send(topicProcessedData, processed);
     }
 
@@ -262,17 +271,7 @@ public class DataService {
         long memoryUsage = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
         int threadCount = threadMXBean.getThreadCount();
 
-        Map<String, Double> varianceMap = new HashMap<>();
-        List<SensorDataRaw> rawDataList = sensorDataRawRepository.findAll();
-        Map<String, List<Double>> sensorDataMap = rawDataList.stream()
-                .collect(Collectors.groupingBy(SensorDataRaw::getSensorType,
-                        Collectors.mapping(SensorDataRaw::getValue, Collectors.toList())));
-
-        sensorDataMap.forEach((sensorType, values) -> {
-            double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-            double variance = values.stream().mapToDouble(v -> Math.pow(v - mean, 2)).average().orElse(0.0);
-            varianceMap.put(sensorType, variance);
-        });
+        Map<String, Double> varianceMap = calculateVarianceMap();
 
         totalDataReceived.set(totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get() + generateRandomValue(8));
 
@@ -287,8 +286,52 @@ public class DataService {
         metrics.setTotalDataAggregated(totalDataAggregated.get());
         metrics.setTotalDataAfterHeuristics(totalDataReceived.get() - (totalDataFiltered.get() + totalDataCompressed.get() + totalDataAggregated.get()));
         metrics.setErrorCount(errorCount.get());
+        metrics.setProcessorId(sensorProcessorId);
 
         metricsRepository.save(metrics);
+
+        sendMetricsToKafka(metrics);
+    }
+
+    private Map<String, Double> calculateVarianceMap() {
+        List<SensorDataRaw> rawDataList = sensorDataRawRepository.findAll();
+        return rawDataList.stream()
+                .collect(Collectors.groupingBy(SensorDataRaw::getSensorType,
+                        Collectors.mapping(SensorDataRaw::getValue, Collectors.toList())))
+                .entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> {
+                    List<Double> values = entry.getValue();
+                    double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+                    return values.stream().mapToDouble(v -> Math.pow(v - mean, 2)).average().orElse(0.0);
+                }));
+    }
+
+    private void sendMetricsToKafka(Metrics metrics) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("cpuUsage", metrics.getCpuUsage());
+        data.put("memoryUsage", metrics.getMemoryUsage());
+        data.put("threadCount", metrics.getThreadCount());
+        data.put("totalDataReceived", metrics.getTotalDataReceived());
+        data.put("totalDataFiltered", metrics.getTotalDataFiltered());
+        data.put("totalDataCompressed", metrics.getTotalDataCompressed());
+        data.put("totalDataAggregated", metrics.getTotalDataAggregated());
+        data.put("totalDataAfterHeuristics", metrics.getTotalDataAfterHeuristics());
+        data.put("errorCount", metrics.getErrorCount());
+        data.put("processorId", metrics.getProcessorId());
+        data.put("varianceMap", metrics.getVarianceMap());
+
+        LocalDateTime now = LocalDateTime.now();
+        data.put("timestamp", List.of(
+                now.getYear(),
+                now.getMonthValue(),
+                now.getDayOfMonth(),
+                now.getHour(),
+                now.getMinute(),
+                now.getSecond(),
+                now.getNano() / 1000000
+        ));
+
+        kafkaTemplate.send(topicMetrics, data);
     }
 
     private long generateRandomValue(long baseValue) {
