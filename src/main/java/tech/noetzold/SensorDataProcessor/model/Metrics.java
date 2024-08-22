@@ -29,4 +29,5 @@ public class Metrics {
     private long totalDataAggregated;
     private long totalDataAfterHeuristics;
     private long errorCount;
+    private String processorId;
 }
