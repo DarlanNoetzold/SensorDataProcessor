@@ -23,4 +23,5 @@ public class SensorDataProcessed {
 
     private double filteredSize;
     private double compressedSize;
+    private String processorId;
 }
